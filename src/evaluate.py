@@ -1,19 +1,31 @@
 from model import Predictor
 from toystateworld import rollout, compute_drifts, is_trajectory_stable
-from pathlib import Path
 import torch
 import matplotlib.pyplot as plt
 import numpy as np
-from pathlib import Path
-import os
+from config import SEED, MODEL_PATH, RESULTS_DIR, HIDDEN_SIZE
 
 
 
-np.random.seed(seed=42)
+np.random.seed(seed=SEED)
 
 
 
-def model_rollout(model, z0, K):
+def model_rollout(model: Predictor, 
+                  z0: tuple[float, float], K: int) -> list[tuple[float, float]]:
+    """
+    Create a rollout trajectory autoregressively using
+    one-step predictor model.
+
+    Args:
+        model (Predictor): one-step predictor object
+        z0 (tuple[float, float]): initial 2D point
+        K (int): number of steps
+
+    Returns:
+        list[tuple[float, float]]: final predicted trajectory
+    """
+
     traj = [z0]
     z0 = torch.tensor(z0, dtype=torch.float32)
     z0 = z0.unsqueeze(0)
@@ -27,7 +39,24 @@ def model_rollout(model, z0, K):
 
 
 
-def average_drift(model, n_samples, K, burn_in):
+def average_drift(model: Predictor, n_samples: int, 
+                  K: int, burn_in: int) -> tuple[np.ndarray, 
+                                                 int, int, int]:
+    """
+    Compute average drift from a given number of trajectories.
+
+    Args:
+        model (Predictor): one-step predictor object
+        n_samples (int): number of trajectories
+        K (int): number of steps for each trajectory
+        burn_in (int): number of discarded point from trajectory
+
+    Returns:
+        tuple[np.ndarray, int, int, int]: mean drift, number of unstable 
+        trajectories, number of unstable true trajectories, number 
+        of unstable predicted trajectories
+    """
+
     drifts = []
     unstable_traj = 0
     unstable_true_traj = 0
@@ -58,34 +87,31 @@ def average_drift(model, n_samples, K, burn_in):
     
 
 
-MODEL_PATH = Path(__file__).resolve().parent.parent / "models" / "predictor.pt"
-RESULTS_DIR = Path(__file__).resolve().parent.parent / "results"
-os.makedirs(RESULTS_DIR, exist_ok=True)
+if __name__ == "__main__":
+    weights = torch.load(MODEL_PATH, weights_only=True)
+    model = Predictor(hidden_size=HIDDEN_SIZE)
+    model.load_state_dict(weights)
+    model.eval()
 
-weights = torch.load(MODEL_PATH, weights_only=True)
-model = Predictor(hidden_size=64)
-model.load_state_dict(weights)
-model.eval()
+    n_samples = 100
+    K = 50
+    burn_in = 5
 
-n_samples = 100
-K = 50
-burn_in = 5
+    with torch.inference_mode():
+        means, n_unstable, n_unstable_true, n_unstable_model = average_drift(model, n_samples, K, burn_in)
 
-with torch.inference_mode():
-    means, n_unstable, n_unstable_true, n_unstable_model = average_drift(model, n_samples, K, burn_in)
+    print(f"Unstable warmup trajectories: {n_unstable}/{n_samples}")
+    print(f"Unstable true trajectories: {n_unstable_true}/{n_samples}")
+    print(f"Unstable model rollouts: {n_unstable_model}/{n_samples}")
 
-print(f"Unstable warmup trajectories: {n_unstable}/100")
-print(f"Unstable true trajectories: {n_unstable_true}/100")
-print(f"Unstable model rollouts: {n_unstable_model}/100")
+    np.save(RESULTS_DIR / "baseline_drift_means.npy", means)
 
-np.save(RESULTS_DIR / "baseline_drift_means.npy", means)
-
-plt.semilogy(list(range(1, 51)), means[1:])
-plt.xlabel("Rollout step k")
-plt.ylabel("Drift ||true - predicted||")
-plt.title(f"Average drift, baseline (n={n_samples}, K={K})")
-plt.savefig(RESULTS_DIR / "baseline_drift_plot.png", dpi=150)
-plt.grid()
-plt.show()
+    plt.semilogy(list(range(1, 51)), means[1:])
+    plt.xlabel("Rollout step k")
+    plt.ylabel("Drift ||true - predicted||")
+    plt.title(f"Average drift, baseline (n={n_samples}, K={K})")
+    plt.savefig(RESULTS_DIR / "baseline_drift_plot.png", dpi=150)
+    plt.grid()
+    plt.show()
 
 
