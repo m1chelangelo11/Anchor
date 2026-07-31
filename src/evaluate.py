@@ -1,5 +1,5 @@
 from model import Predictor
-from toystateworld import rollout, compute_drifts
+from toystateworld import rollout, compute_drifts, is_trajectory_stable
 from pathlib import Path
 import torch
 import matplotlib.pyplot as plt
@@ -24,12 +24,6 @@ def model_rollout(model, z0, K):
         traj.append(z_new)
 
     return traj
-
-
-
-def is_trajectory_stable(traj, threshold=10):
-    return not any(abs(point[0]) > threshold or abs(point[1]) > threshold
-                   or np.isnan(point[0]) or np.isnan(point[1]) for point in traj)
 
 
 
