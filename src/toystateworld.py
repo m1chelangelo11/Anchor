@@ -145,3 +145,67 @@ def generate_dataset(n_traj: int, len_traj: int,
     return torch.tensor(inputs, dtype=torch.float32), torch.tensor(targets, dtype=torch.float32)
 
 
+
+def normalize_k(k: float, k_min: float = 1, k_max: float = 20) -> float:
+    """
+    Normalize k number to a range of [-1,1].
+
+    Args:
+        k (float): a number to be normalized
+        k_min (float): minum value of k number
+        k_max (float): maximum value of k number
+
+    Returns:
+        float: number normalized to a value between -1 and 1
+    """
+
+    return 2 * (k - k_min) / (k_max - k_min) - 1
+
+
+
+def generate_horizon_dataset(n_traj: int, len_traj: int,
+                             burn: int, k_max: int) -> tuple[torch.Tensor, torch.Tensor]:
+    """
+    Generates a dataset for training direct prediction model on 
+    Henon map. Creates n trajectories of a given length, checks 
+    if they're stable, deletes a given number of first points, because 
+    they are not on attractor yet. In the dataset there are many horizons
+    for many different starting points.
+
+    Args:
+        n_traj (int): number of trajectories to generate
+        len_traj (int): length of each single trajectory
+        burn (int): number of points which will be deleted
+        k_max (int): maximum step
+
+    Returns:
+        tuple[torch.Tensor, torch.Tensor]: tuple of 
+        2D point coordinates and k step
+    """
+
+    inputs = []
+    targets = []
+
+    for _ in range(0, n_traj):
+        z0 = np.random.uniform(-1, 1, 2)
+        traj = rollout(z0, len_traj)
+        if not is_trajectory_stable(traj):
+            continue
+
+        traj = traj[burn:]
+        T = len(traj)
+
+        for t in range(T-1):
+            steps_till_end = T - 1 - t
+            real_k_max = min(k_max, steps_till_end)
+
+            for k in range(1, real_k_max+1):
+                k_norm = normalize_k(k=k, k_max=k_max)
+                ipt = (*traj[t], k_norm)
+                target = traj[t+k]
+                inputs.append(ipt)
+                targets.append(target)
+
+    return torch.tensor(inputs, dtype=torch.float32), torch.tensor(targets, dtype=torch.float32)
+
+
