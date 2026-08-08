@@ -1,15 +1,16 @@
-import torch
+from itertools import pairwise
+
 import numpy as np
+import torch
+from torch import nn
 
 
-
-def step(z: tuple[float, float], a: float = 1.4, 
-         b: float = 0.3) -> tuple[float, float]:
+def step(z: tuple[float, float], a: float = 1.4, b: float = 0.3) -> tuple[float, float]:
     """
     Compute the step in the Henon map environment.
 
     Args:
-        z (tuple[float, float]): initial point 
+        z (tuple[float, float]): initial point
         a (float): controls whether the map exhibits chaotic behavior
         b (float): controls whether the map exhibits chaotic behavior
 
@@ -18,11 +19,10 @@ def step(z: tuple[float, float], a: float = 1.4,
     """
 
     x, y = z
-    x_next = 1 - a * x ** 2 + y
+    x_next = 1 - a * x**2 + y
     y_next = b * x
 
     return (x_next, y_next)
-
 
 
 def rollout(z0: tuple[float, float], K: int) -> list[tuple[float, float]]:
@@ -47,9 +47,7 @@ def rollout(z0: tuple[float, float], K: int) -> list[tuple[float, float]]:
     return traj
 
 
-
-def dist(point_a: tuple[float, float], 
-         point_b: tuple[float, float]) -> float:
+def dist(point_a: tuple[float, float], point_b: tuple[float, float]) -> float:
     """
     Calculates distance between two points.
 
@@ -68,14 +66,14 @@ def dist(point_a: tuple[float, float],
     return euc_dist
 
 
-
-def compute_drifts(traj_a: list[tuple[float, float]], 
-                   traj_b: list[tuple[float, float]]) -> list[float]:
+def compute_drifts(
+    traj_a: list[tuple[float, float]], traj_b: list[tuple[float, float]]
+) -> list[float]:
     """
-    Compute drifts between two trajectories. Drifts are distances 
+    Compute drifts between two trajectories. Drifts are distances
     between two points on a same position in compared trajectories.
 
-    Args: 
+    Args:
         traj_a (list[tuple[float, float]]): trajectory of points
         traj_b (list[tuple[float, float]]): trajectory of points
 
@@ -90,9 +88,9 @@ def compute_drifts(traj_a: list[tuple[float, float]],
     return drifts
 
 
-
-def is_trajectory_stable(traj: list[tuple[float, float]],
-                         threshold: float = 10.0) -> bool:
+def is_trajectory_stable(
+    traj: list[tuple[float, float]], threshold: float = 10.0
+) -> bool:
     """
     Checks if a trajectory is stable. Trajectory is unstable when
     one of it's coordinates is bigger than threshold or is a NaN value.
@@ -104,18 +102,23 @@ def is_trajectory_stable(traj: list[tuple[float, float]],
     Returns:
         bool: True if trajectory is stable or False if it isn't
     """
-    
-    return not any(abs(point[0]) > threshold or abs(point[1]) > threshold
-                   or np.isnan(point[0]) or np.isnan(point[1]) for point in traj)
+
+    return not any(
+        abs(point[0]) > threshold
+        or abs(point[1]) > threshold
+        or np.isnan(point[0])
+        or np.isnan(point[1])
+        for point in traj
+    )
 
 
-
-def generate_dataset(n_traj: int, len_traj: int, 
-                     burn: int) -> tuple[torch.Tensor, torch.Tensor]:
+def generate_dataset(
+    n_traj: int, len_traj: int, burn: int
+) -> tuple[torch.Tensor, torch.Tensor]:
     """
     Generates a dataset for training model on Henon map. Creates n
     trajectories of a given length, checks if they're stable,
-    deletes a given number of first points, because they are not 
+    deletes a given number of first points, because they are not
     on attractor yet. For every point as an input there is a target point.
 
     Args:
@@ -130,7 +133,7 @@ def generate_dataset(n_traj: int, len_traj: int,
     inputs = []
     targets = []
 
-    for _ in range(0, n_traj):
+    for _ in range(n_traj):
         z0 = np.random.uniform(-1, 1, 2)
         traj = rollout(z0, len_traj)
         if not is_trajectory_stable(traj):
@@ -138,37 +141,45 @@ def generate_dataset(n_traj: int, len_traj: int,
 
         traj = traj[burn:]
 
-        for ipt, target in zip(traj, traj[1:]):
+        for ipt, target in pairwise(traj):
             inputs.append(ipt)
             targets.append(target)
 
-    return torch.tensor(inputs, dtype=torch.float32), torch.tensor(targets, dtype=torch.float32)
+    return torch.tensor(inputs, dtype=torch.float32), torch.tensor(
+        targets, dtype=torch.float32
+    )
 
 
-
-def normalize_k(k: float, k_min: float = 1, k_max: float = 20) -> float:
+def build_horizon_input(
+    point: tuple[float, float], k: int, k_max: int
+) -> tuple[float, ...]:
     """
-    Normalize k number to a range of [-1,1].
+    Combines a Henon map point with a list made with one-hot encoding
+    the value of k.
 
     Args:
-        k (float): a number to be normalized
-        k_min (float): minum value of k number
-        k_max (float): maximum value of k number
+        point (tuple[float, float]): A point coordinates from the Henon map
+        k (int): k value that represents a step in the rollout
+        k_max (int): maximum step
 
     Returns:
-        float: number normalized to a value between -1 and 1
+        tuple[float, ...]: a tuple of point coordinates and one-hot encoding list
     """
 
-    return 2 * (k - k_min) / (k_max - k_min) - 1
+    k -= 1
+    k = torch.tensor(k, dtype=torch.int64)
+    one_hot = nn.functional.one_hot(k, k_max).tolist()
+
+    return (*point, *one_hot)
 
 
-
-def generate_horizon_dataset(n_traj: int, len_traj: int,
-                             burn: int, k_max: int) -> tuple[torch.Tensor, torch.Tensor]:
+def generate_horizon_dataset(
+    n_traj: int, len_traj: int, burn: int, k_max: int
+) -> tuple[torch.Tensor, torch.Tensor]:
     """
-    Generates a dataset for training direct prediction model on 
-    Henon map. Creates n trajectories of a given length, checks 
-    if they're stable, deletes a given number of first points, because 
+    Generates a dataset for training direct prediction model on
+    Henon map. Creates n trajectories of a given length, checks
+    if they're stable, deletes a given number of first points, because
     they are not on attractor yet. In the dataset there are many horizons
     for many different starting points.
 
@@ -179,14 +190,14 @@ def generate_horizon_dataset(n_traj: int, len_traj: int,
         k_max (int): maximum step
 
     Returns:
-        tuple[torch.Tensor, torch.Tensor]: tuple of 
-        2D point coordinates and k step
+        tuple[torch.Tensor, torch.Tensor]: tuple of
+        2D point coordinates and one-hot encoded steps
     """
 
     inputs = []
     targets = []
 
-    for _ in range(0, n_traj):
+    for _ in range(n_traj):
         z0 = np.random.uniform(-1, 1, 2)
         traj = rollout(z0, len_traj)
         if not is_trajectory_stable(traj):
@@ -195,17 +206,16 @@ def generate_horizon_dataset(n_traj: int, len_traj: int,
         traj = traj[burn:]
         T = len(traj)
 
-        for t in range(T-1):
+        for t in range(T - 1):
             steps_till_end = T - 1 - t
             real_k_max = min(k_max, steps_till_end)
 
-            for k in range(1, real_k_max+1):
-                k_norm = normalize_k(k=k, k_max=k_max)
-                ipt = (*traj[t], k_norm)
-                target = traj[t+k]
+            for k in range(1, real_k_max + 1):
+                ipt = build_horizon_input(traj[t], k, k_max)
+                target = traj[t + k]
                 inputs.append(ipt)
                 targets.append(target)
 
-    return torch.tensor(inputs, dtype=torch.float32), torch.tensor(targets, dtype=torch.float32)
-
-
+    return torch.tensor(inputs, dtype=torch.float32), torch.tensor(
+        targets, dtype=torch.float32
+    )

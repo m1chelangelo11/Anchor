@@ -1,6 +1,5 @@
 import torch
-import torch.nn as nn
-
+from torch import nn
 
 
 class Predictor(nn.Module):
@@ -12,8 +11,6 @@ class Predictor(nn.Module):
         activation (torch.nn.Tanh): Tanh activation layer
         output_layer (torch.nn.Linear): Linear output layer
     """
-
-
 
     def __init__(self, hidden_size: int = 64):
         """
@@ -30,15 +27,13 @@ class Predictor(nn.Module):
         self.activation = nn.Tanh()
         self.output_layer = nn.Linear(hidden_size, 2)
 
-
-
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
         Executes a forward pass through a neural network.
 
         Args:
             x (torch.Tensor): input tensor with data package
-        
+
         Returns:
             torch.Tensor: output tensor with model predictions
         """
@@ -48,5 +43,3 @@ class Predictor(nn.Module):
         x = self.output_layer(x)
 
         return x
-
-    

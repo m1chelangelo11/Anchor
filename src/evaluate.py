@@ -1,18 +1,17 @@
-from model import Predictor
-from toystateworld import rollout, compute_drifts, is_trajectory_stable
-import torch
 import matplotlib.pyplot as plt
 import numpy as np
-from config import SEED, MODEL_PATH, RESULTS_DIR, HIDDEN_SIZE
+import torch
 
-
+from config import HIDDEN_SIZE, MODEL_PATH, RESULTS_DIR, SEED
+from model import Predictor
+from toystateworld import compute_drifts, is_trajectory_stable, rollout
 
 np.random.seed(seed=SEED)
 
 
-
-def model_rollout(model: Predictor, 
-                  z0: tuple[float, float], K: int) -> list[tuple[float, float]]:
+def model_rollout(
+    model: Predictor, z0: tuple[float, float], K: int
+) -> list[tuple[float, float]]:
     """
     Create a rollout trajectory autoregressively using
     one-step predictor model.
@@ -38,10 +37,9 @@ def model_rollout(model: Predictor,
     return traj
 
 
-
-def average_drift(model: Predictor, n_samples: int, 
-                  K: int, burn_in: int) -> tuple[np.ndarray, 
-                                                 int, int, int]:
+def average_drift(
+    model: Predictor, n_samples: int, K: int, burn_in: int
+) -> tuple[np.ndarray, int, int, int]:
     """
     Compute average drift from a given number of trajectories.
 
@@ -52,8 +50,8 @@ def average_drift(model: Predictor, n_samples: int,
         burn_in (int): number of discarded point from trajectory
 
     Returns:
-        tuple[np.ndarray, int, int, int]: mean drift, number of unstable 
-        trajectories, number of unstable true trajectories, number 
+        tuple[np.ndarray, int, int, int]: mean drift, number of unstable
+        trajectories, number of unstable true trajectories, number
         of unstable predicted trajectories
     """
 
@@ -62,13 +60,13 @@ def average_drift(model: Predictor, n_samples: int,
     unstable_true_traj = 0
     unstable_model_traj = 0
 
-    for i in range(0, n_samples):
+    for i in range(n_samples):
         z0_raw = np.random.uniform(-1, 1, 2)
         warm_traj = rollout(z0_raw, burn_in)
         if not is_trajectory_stable(warm_traj):
             unstable_traj += 1
             continue
-        
+
         z0_warm = warm_traj[-1]
         true_traj = rollout(z0_warm, K)
         if not is_trajectory_stable(true_traj):
@@ -79,12 +77,16 @@ def average_drift(model: Predictor, n_samples: int,
         if not is_trajectory_stable(model_traj):
             unstable_model_traj += 1
             continue
-        
+
         drift = compute_drifts(true_traj, model_traj)
         drifts.append(drift)
 
-    return np.mean(drifts, axis=0), unstable_traj, unstable_true_traj, unstable_model_traj
-    
+    return (
+        np.mean(drifts, axis=0),
+        unstable_traj,
+        unstable_true_traj,
+        unstable_model_traj,
+    )
 
 
 if __name__ == "__main__":
@@ -98,7 +100,9 @@ if __name__ == "__main__":
     burn_in = 5
 
     with torch.inference_mode():
-        means, n_unstable, n_unstable_true, n_unstable_model = average_drift(model, n_samples, K, burn_in)
+        means, n_unstable, n_unstable_true, n_unstable_model = average_drift(
+            model, n_samples, K, burn_in
+        )
 
     print(f"Unstable warmup trajectories: {n_unstable}/{n_samples}")
     print(f"Unstable true trajectories: {n_unstable_true}/{n_samples}")
@@ -113,5 +117,3 @@ if __name__ == "__main__":
     plt.savefig(RESULTS_DIR / "baseline_drift_plot.png", dpi=150)
     plt.grid()
     plt.show()
-
-

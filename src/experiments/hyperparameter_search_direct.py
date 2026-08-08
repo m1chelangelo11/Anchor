@@ -1,10 +1,15 @@
 import numpy as np
 
-from train import training
+from train_direct import training_direct
 
 if __name__ == "__main__":
     loss_history = []
-    configs = [(1000, 64, 3000), (1000, 64, 5000), (1000, 64, 10000), (1000, 64, 15000)]
+    configs = [
+        (1000, 128, 20000),
+        (1000, 256, 20000),
+        #(1000, 64, 20000),
+        #(1000, 64, 30000),
+    ]
     n_repeats = 10
     learning_rate = 1e-3
 
@@ -13,7 +18,12 @@ if __name__ == "__main__":
         n_traj, hidden_size, n_epochs = config
 
         for rep in range(n_repeats):
-            loss = training(n_traj, hidden_size, n_epochs, learning_rate)
+            loss = training_direct(
+                n_traj=n_traj,
+                hidden_size=hidden_size,
+                n_epochs=n_epochs,
+                learning_rate=learning_rate,
+            )
             loss_pair.append(loss)
 
         loss_history.append(loss_pair)
